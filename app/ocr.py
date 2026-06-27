@@ -5,46 +5,62 @@ import pytesseract
 from pdf2image import convert_from_path
 from PIL import Image
 
+from app.logger import Timer, log
 
-def pdf_to_images(pdf_path: str, dpi: int = 300) -> list[Image.Image]:
+MAX_W = 800
+MAX_H = 1000
+PDF_RENDER_DPI = 150
+
+
+def pdf_to_images(pdf_path: str, dpi: int = PDF_RENDER_DPI) -> list[Image.Image]:
     return convert_from_path(pdf_path, dpi=dpi)
 
 
-def ocr_image(image: Image.Image) -> str:
-    return pytesseract.image_to_string(image)
+def resize_image(img: Image.Image) -> Image.Image:
+    w, h = img.size
+    if w > MAX_W or h > MAX_H:
+        img.thumbnail((MAX_W, MAX_H))
+    return img
 
 
-def ocr_image_detailed(image: Image.Image) -> list[dict]:
-    data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
-    results = []
-    for i in range(len(data["text"])):
-        text = data["text"][i].strip()
-        if text and int(data["conf"][i]) > 0:
-            results.append({
-                "text": text,
-                "confidence": int(data["conf"][i]),
-                "left": data["left"][i],
-                "top": data["top"][i],
-                "width": data["width"][i],
-                "height": data["height"][i],
-            })
-    return results
+def ocr_image(img: Image.Image, hint: str = "") -> str:
+    img = resize_image(img)
+    tag = f"ocr({hint})" if hint else "ocr"
+    with Timer(tag):
+        text = pytesseract.image_to_string(img)
+    log.info("%s → %d chars", tag, len(text))
+    return text
 
 
-def ocr_pdf(pdf_path: str, dpi: int = 300) -> tuple[list[str], str]:
-    images = pdf_to_images(pdf_path, dpi=dpi)
-    page_texts = []
-    for img in images:
-        text = ocr_image(img)
-        page_texts.append(text)
-    return page_texts, "\n\n".join(page_texts)
+def extract_text_from_pdf(pdf_path: str) -> str:
+    with Timer("pdf_to_images"):
+        images = pdf_to_images(pdf_path)
+    all_text = []
+    for i, img in enumerate(images):
+        text = ocr_image(img, hint=f"page_{i}")
+        all_text.append(text)
+    return "\n\n".join(all_text)
 
 
-def ocr_pdf_from_bytes(pdf_bytes: bytes, dpi: int = 300) -> tuple[list[str], str]:
-    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-        tmp.write(pdf_bytes)
+def extract_text_from_image(img_path: str) -> str:
+    img = Image.open(img_path)
+    return ocr_image(img, hint="image")
+
+
+def extract_text(file_bytes: bytes, filename: str) -> str:
+    suffix = Path(filename).suffix.lower()
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp.write(file_bytes)
         tmp_path = tmp.name
+
+    log.info("Processing file=%s size=%d bytes", filename, len(file_bytes))
     try:
-        return ocr_pdf(tmp_path, dpi=dpi)
+        with Timer(f"extract_text({filename})"):
+            if suffix == ".pdf":
+                result = extract_text_from_pdf(tmp_path)
+            else:
+                result = extract_text_from_image(tmp_path)
     finally:
         Path(tmp_path).unlink(missing_ok=True)
+
+    return result

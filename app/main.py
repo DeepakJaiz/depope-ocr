@@ -1,63 +1,106 @@
-import uuid
-from pathlib import Path
+from fastapi import FastAPI, File, UploadFile
 
-from fastapi import FastAPI, File, UploadFile, HTTPException
-from fastapi.responses import JSONResponse
-
-from app.models import OcrResponse, OcrPageResult, ErrorResponse
-from app.ocr import ocr_pdf_from_bytes
-from app.parser import parse_invoice
+from app.logger import log
+from app.models import ExtractionResponse, HealthResponse, ContainerInfo
+from app.ocr import extract_text
+from app.llm_service import extract_invoice_fields
 
 app = FastAPI(
     title="Depope OCR",
-    description="PDF OCR extraction service — upload a PDF, get text and structured invoice data back.",
-    version="1.0.0",
+    description="OCR extraction service for depot invoices — upload PDF/images, get structured depot/container data.",
+    version="2.0.0",
 )
 
-UPLOAD_DIR = Path("uploads")
-UPLOAD_DIR.mkdir(exist_ok=True)
+SUPPORTED_TYPES = {
+    "application/pdf",
+    "image/png",
+    "image/jpeg",
+    "image/tiff",
+    "image/bmp",
+}
 
 MAX_FILE_SIZE = 50 * 1024 * 1024
 
 
-@app.post(
-    "/ocr",
-    response_model=OcrResponse,
-    responses={400: {"model": ErrorResponse}, 413: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
-    summary="Extract text from a PDF",
-    description="Upload a PDF file. Returns raw OCR text per page, combined full text, and structured invoice fields if detected.",
-)
-async def ocr_pdf_endpoint(file: UploadFile = File(...)) -> OcrResponse:
-    if not file.filename or not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files are accepted")
+def _normalise_containers(raw: list | dict | None) -> list[dict] | None:
+    if raw is None:
+        return None
+    if isinstance(raw, list):
+        return raw
+    if isinstance(raw, dict):
+        keys = [k for k in raw if k != "type_size"]
+        vals = [raw[k] for k in keys if raw[k]]
+        if vals:
+            return [{"number": v, "type_size": raw.get("type_size")} for v in vals]
+    return None
 
-    contents = await file.read()
-    if len(contents) == 0:
-        raise HTTPException(status_code=400, detail="Empty file")
-    if len(contents) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=413, detail="File too large (max 50 MB)")
 
+@app.get("/health", response_model=HealthResponse)
+async def health():
+    ocr_loaded = True
     try:
-        page_texts, full_text = ocr_pdf_from_bytes(contents)
+        pytesseract = __import__("pytesseract")
+        pytesseract.get_tesseract_version()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"OCR processing failed: {str(e)}")
+        log.error("Tesseract not available: %s", e)
+        ocr_loaded = False
 
-    pages = [
-        OcrPageResult(page_number=i + 1, raw_text=text)
-        for i, text in enumerate(page_texts)
-    ]
+    return HealthResponse(status="ok", ocr_loaded=ocr_loaded)
 
-    invoice = parse_invoice(full_text)
 
-    return OcrResponse(
-        filename=file.filename,
-        total_pages=len(pages),
-        full_text=full_text,
-        pages=pages,
-        invoice=invoice,
+@app.post("/api/v1/extract", response_model=ExtractionResponse)
+async def extract(file: UploadFile = File(...)):
+    req_id = id(file)
+    log.info("[req=%s] POST /api/v1/extract file=%s type=%s", req_id, file.filename, file.content_type)
+
+    if file.content_type not in SUPPORTED_TYPES:
+        log.warning("[req=%s] Unsupported type: %s", req_id, file.content_type)
+        return ExtractionResponse(error=f"Unsupported file type: {file.content_type}")
+
+    file_bytes = await file.read()
+    if not file_bytes:
+        log.warning("[req=%s] Empty file", req_id)
+        return ExtractionResponse(error="Empty file")
+    if len(file_bytes) > MAX_FILE_SIZE:
+        log.warning("[req=%s] File too large: %d bytes", req_id, len(file_bytes))
+        return ExtractionResponse(error="File too large (max 50 MB)")
+
+    from app.logger import Timer
+    with Timer(f"[req={req_id}] ocr"):
+        try:
+            raw_text = extract_text(file_bytes, file.filename or "upload")
+        except Exception as e:
+            log.error("[req=%s] OCR failed: %s", req_id, e)
+            return ExtractionResponse(error=f"OCR failed: {e}")
+
+    if not raw_text.strip():
+        log.warning("[req=%s] No text extracted from document", req_id)
+        return ExtractionResponse(raw_text=raw_text, error="No text extracted from document")
+
+    with Timer(f"[req={req_id}] llm"):
+        try:
+            fields = extract_invoice_fields(raw_text)
+        except Exception as e:
+            log.error("[req=%s] LLM extraction failed: %s", req_id, e)
+            return ExtractionResponse(raw_text=raw_text, error=f"LLM extraction failed: {e}")
+
+    raw_containers = fields.get("containers") or fields.get("container_number")
+    containers = _normalise_containers(raw_containers)
+    container_list = (
+        [ContainerInfo(number=c["number"], type_size=c.get("type_size")) for c in containers]
+        if containers
+        else None
     )
 
-
-@app.get("/health")
-async def health():
-    return {"status": "ok"}
+    log.info(
+        "[req=%s] Done depot=%s containers=%s",
+        req_id, fields.get("depot"),
+        [c.number for c in container_list] if container_list else None,
+    )
+    return ExtractionResponse(
+        depot=fields.get("depot"),
+        validity_date=fields.get("validity_date"),
+        shipping_line=fields.get("shipping_line"),
+        containers=container_list,
+        raw_text=raw_text,
+    )

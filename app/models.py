@@ -1,39 +1,25 @@
 from pydantic import BaseModel
-from typing import Optional
 
 
-class ExtractedLineItem(BaseModel):
-    description: Optional[str] = None
-    quantity: Optional[int] = None
-    unit_price: Optional[float] = None
-    total: Optional[float] = None
+class ContainerInfo(BaseModel):
+    number: str
+    type_size: str | None = None
 
 
-class ExtractedInvoice(BaseModel):
-    invoice_number: Optional[str] = None
-    date: Optional[str] = None
-    vendor_name: Optional[str] = None
-    vendor_address: Optional[str] = None
-    customer_name: Optional[str] = None
-    subtotal: Optional[float] = None
-    tax: Optional[float] = None
-    total: Optional[float] = None
-    line_items: list[ExtractedLineItem] = []
+class ExtractionResponse(BaseModel):
+    depot: str | None = None
+    validity_date: str | None = None
+    shipping_line: str | None = None
+    containers: list[ContainerInfo] | None = None
+    raw_text: str | None = None
+    error: str | None = None
 
 
-class OcrPageResult(BaseModel):
-    page_number: int
-    raw_text: str
-
-
-class OcrResponse(BaseModel):
-    filename: str
-    total_pages: int
-    full_text: str
-    pages: list[OcrPageResult]
-    invoice: Optional[ExtractedInvoice] = None
+class HealthResponse(BaseModel):
+    status: str
+    ocr_loaded: bool
 
 
 class ErrorResponse(BaseModel):
     error: str
-    detail: Optional[str] = None
+    detail: str | None = None

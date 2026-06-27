@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -16,57 +16,73 @@ def client():
 async def test_health(client):
     resp = await client.get("/health")
     assert resp.status_code == 200
-    assert resp.json() == {"status": "ok"}
+    data = resp.json()
+    assert data["status"] == "ok"
+    assert "ocr_loaded" in data
 
 
 @pytest.mark.asyncio
-async def test_ocr_non_pdf(client):
-    resp = await client.post("/ocr", files={"file": ("test.txt", b"hello", "text/plain")})
-    assert resp.status_code == 400
-    assert resp.json()["detail"] == "Only PDF files are accepted"
+async def test_extract_unsupported_type(client):
+    resp = await client.post("/api/v1/extract", files={"file": ("test.txt", b"hello", "text/plain")})
+    assert resp.status_code == 200
+    assert resp.json()["error"] == "Unsupported file type: text/plain"
 
 
 @pytest.mark.asyncio
-async def test_ocr_no_filename(client):
-    resp = await client.post("/ocr", files={"file": ("", b"%PDF-data", "application/pdf")})
-    assert resp.status_code in (400, 422)
+async def test_extract_empty_file(client):
+    resp = await client.post("/api/v1/extract", files={"file": ("test.pdf", b"", "application/pdf")})
+    assert resp.status_code == 200
+    assert resp.json()["error"] == "Empty file"
 
 
 @pytest.mark.asyncio
-async def test_ocr_empty_file(client):
-    resp = await client.post("/ocr", files={"file": ("test.pdf", b"", "application/pdf")})
-    assert resp.status_code == 400
-    assert resp.json()["detail"] == "Empty file"
-
-
-@pytest.mark.asyncio
-async def test_ocr_oversized_file(client):
-    big = b"x" * (51 * 1024 * 1024)
-    resp = await client.post("/ocr", files={"file": ("test.pdf", big, "application/pdf")})
-    assert resp.status_code == 413
-    assert "too large" in resp.json()["detail"]
-
-
-@pytest.mark.asyncio
-async def test_ocr_processing_error(client):
-    big = b"x" * 1024
-    with patch("app.main.ocr_pdf_from_bytes", side_effect=RuntimeError("poppler crash")):
-        resp = await client.post("/ocr", files={"file": ("test.pdf", big, "application/pdf")})
-    assert resp.status_code == 500
-    assert "OCR processing failed" in resp.json()["detail"]
-
-
-@pytest.mark.asyncio
-async def test_ocr_success(client, sample_pdf_bytes):
-    resp = await client.post(
-        "/ocr",
-        files={"file": ("invoice.pdf", sample_pdf_bytes, "application/pdf")},
-    )
+async def test_extract_success(client, sample_pdf_bytes):
+    with patch("app.main.extract_invoice_fields") as mock_llm:
+        mock_llm.return_value = {
+            "depot": "DP World Nhava Sheva",
+            "validity_date": "25-Jul-2026",
+            "shipping_line": "MAERSK",
+            "containers": [
+                {"number": "FFAU6029848", "type_size": "20' DV"},
+                {"number": "HASU1493470", "type_size": "40' HC"},
+            ],
+        }
+        resp = await client.post(
+            "/api/v1/extract",
+            files={"file": ("invoice.pdf", sample_pdf_bytes, "application/pdf")},
+        )
     assert resp.status_code == 200
     data = resp.json()
-    assert data["filename"] == "invoice.pdf"
-    assert data["total_pages"] >= 1
-    assert len(data["full_text"]) > 0
-    assert len(data["pages"]) == data["total_pages"]
-    assert data["pages"][0]["page_number"] == 1
-    assert data["invoice"] is not None
+    assert data["depot"] == "DP World Nhava Sheva"
+    assert data["validity_date"] == "25-Jul-2026"
+    assert data["shipping_line"] == "MAERSK"
+    assert len(data["containers"]) == 2
+    assert data["containers"][0]["number"] == "FFAU6029848"
+    assert data["containers"][0]["type_size"] == "20' DV"
+    assert data["containers"][1]["number"] == "HASU1493470"
+    assert data["containers"][1]["type_size"] == "40' HC"
+    assert data["raw_text"] is not None
+    assert data["error"] is None
+
+
+@pytest.mark.asyncio
+async def test_extract_ocr_failure(client):
+    with patch("app.main.extract_text", side_effect=RuntimeError("poppler crash")):
+        resp = await client.post(
+            "/api/v1/extract",
+            files={"file": ("test.pdf", b"x" * 1024, "application/pdf")},
+        )
+    assert resp.status_code == 200
+    assert "OCR failed" in resp.json()["error"]
+
+
+@pytest.mark.asyncio
+async def test_extract_llm_failure(client, sample_pdf_bytes):
+    with patch("app.main.extract_invoice_fields", side_effect=RuntimeError("LLM error")):
+        resp = await client.post(
+            "/api/v1/extract",
+            files={"file": ("invoice.pdf", sample_pdf_bytes, "application/pdf")},
+        )
+    assert resp.status_code == 200
+    assert "LLM extraction failed" in resp.json()["error"]
+    assert resp.json()["raw_text"] is not None

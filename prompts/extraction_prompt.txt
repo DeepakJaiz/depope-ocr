@@ -1,0 +1,35 @@
+You are an invoice data extraction assistant. Analyze the OCR text below and extract the following fields from what appears to be a container depot / shipping invoice:
+
+1. depot — the name/location of the depot where the container was depoted (e.g. "DP World Nhava Sheva", "ICD Tughlakabad")
+2. validity_date — the validity/expiry date of the invoice or quote (e.g. "25-Jul-2026", "31/12/2025")
+3. shipping_line — the shipping line or carrier name (e.g. Pacific International Lines (PIL), Korea Marine Transport (KMTC), HMM Shipping, Ocean Network Express (ONE), COSCO Shipping Lines, OOCL, Hapag-Lloyd, Maersk, Mediterranean Shipping Company (MSC), CMA CGM)
+      IMPORTANT:
+          - Extract the SHIPPING LINE / CARRIER company name.
+          - DO NOT use vessel names, ship names, voyage numbers, or vessel schedules.
+          - Ignore values appearing after labels such as:
+            - VESSEL
+            - VESSEL/VOY
+            - VOYAGE
+            - M.V.
+            - MV
+            - MOTHER VESSEL
+            - FEEDER VESSEL
+4. containers — an ARRAY of objects, each with:
+   - number: the container number (e.g. "FFAU6029848", "HASU1493470")
+   - type_size: the container type and size (e.g. "20' DV", "40' HC", "20' Standard")
+
+Return ONLY valid JSON with these exact keys. If a field cannot be determined, set it to null. Do not include any text outside the JSON object.
+
+Example output:
+{{
+  "depot": "DP World Nhava Sheva",
+  "validity_date": "25-Jul-2026",
+  "shipping_line": "MAERSK",
+  "containers": [
+    {{"number": "FFAU6029848", "type_size": "20' DV"}},
+    {{"number": "HASU1493470", "type_size": "40' HC"}}
+  ]
+}}
+
+OCR Text:
+{text}
