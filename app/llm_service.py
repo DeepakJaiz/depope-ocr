@@ -8,7 +8,7 @@ from langchain_openai import ChatOpenAI
 
 from app.logger import Timer, log
 
-PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "extraction_prompt.txt"
+PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "extraction_prompt.txt"
 
 
 def load_prompt() -> str:
