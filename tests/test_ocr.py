@@ -50,7 +50,7 @@ class TestOcrImage:
     def test_returns_text(self, mock_get_ocr):
         mock_ocr = MagicMock()
         mock_result = MagicMock()
-        mock_result.json.return_value = {"res": {"rec_texts": ["hello", "world"]}}
+        mock_result.json = {"res": {"rec_texts": ["hello", "world"]}}
         mock_ocr.predict.return_value = [mock_result]
         mock_get_ocr.return_value = mock_ocr
 

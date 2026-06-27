@@ -68,7 +68,7 @@ def ocr_image(img: Image.Image, hint: str = "") -> str:
 
     lines = []
     for res in result:
-        texts = res.json().get("res", {}).get("rec_texts", [])
+        texts = res.json.get("res", {}).get("rec_texts", [])
         lines.extend(texts)
     log.info("%s → %d lines", tag, len(lines))
     return "\n".join(lines)
