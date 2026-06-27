@@ -4,7 +4,10 @@ import json
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
+
+load_dotenv()
 
 from app.logger import Timer, log
 
