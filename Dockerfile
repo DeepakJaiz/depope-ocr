@@ -29,7 +29,6 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY --from=builder /app/app ./app
-COPY --from=builder /app/prompts ./prompts
 
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
