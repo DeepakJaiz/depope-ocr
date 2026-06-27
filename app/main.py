@@ -39,10 +39,10 @@ def _normalise_containers(raw: list | dict | None) -> list[dict] | None:
 async def health():
     ocr_loaded = True
     try:
-        pytesseract = __import__("pytesseract")
-        pytesseract.get_tesseract_version()
+        from app.ocr import get_ocr
+        get_ocr()
     except Exception as e:
-        log.error("Tesseract not available: %s", e)
+        log.error("OCR model load failed: %s", e)
         ocr_loaded = False
 
     return HealthResponse(status="ok", ocr_loaded=ocr_loaded)

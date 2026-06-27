@@ -1,7 +1,8 @@
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, PropertyMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from PIL import Image
 
 from app.main import app
 
@@ -37,7 +38,10 @@ async def test_extract_empty_file(client):
 
 @pytest.mark.asyncio
 async def test_extract_success(client, sample_pdf_bytes):
-    with patch("app.main.extract_invoice_fields") as mock_llm:
+    with (
+        patch("app.main.extract_text", return_value="OCR text with containers FFAU6029848"),
+        patch("app.main.extract_invoice_fields") as mock_llm,
+    ):
         mock_llm.return_value = {
             "depot": "DP World Nhava Sheva",
             "validity_date": "25-Jul-2026",
@@ -77,11 +81,14 @@ async def test_extract_ocr_failure(client):
 
 
 @pytest.mark.asyncio
-async def test_extract_llm_failure(client, sample_pdf_bytes):
-    with patch("app.main.extract_invoice_fields", side_effect=RuntimeError("LLM error")):
+async def test_extract_llm_failure(client):
+    with (
+        patch("app.main.extract_text", return_value="some OCR text"),
+        patch("app.main.extract_invoice_fields", side_effect=RuntimeError("LLM error")),
+    ):
         resp = await client.post(
             "/api/v1/extract",
-            files={"file": ("invoice.pdf", sample_pdf_bytes, "application/pdf")},
+            files={"file": ("test.pdf", b"x" * 1024, "application/pdf")},
         )
     assert resp.status_code == 200
     assert "LLM extraction failed" in resp.json()["error"]

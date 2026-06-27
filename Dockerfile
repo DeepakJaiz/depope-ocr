@@ -1,8 +1,8 @@
 FROM python:3.12-slim AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    tesseract-ocr \
-    tesseract-ocr-eng \
+    libgl1 \
+    libglib2.0-0 \
     poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
@@ -19,8 +19,8 @@ RUN pip install pytest pytest-cov httpx pytest-asyncio fpdf2 && \
 FROM python:3.12-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    tesseract-ocr \
-    tesseract-ocr-eng \
+    libgl1 \
+    libglib2.0-0 \
     poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
@@ -29,6 +29,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY --from=builder /app/app ./app
+COPY --from=builder /app/prompts ./prompts
 
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
