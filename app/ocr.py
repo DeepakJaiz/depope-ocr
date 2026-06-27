@@ -2,8 +2,8 @@ import tempfile
 from pathlib import Path
 
 import numpy as np
-from pdf2image import convert_from_path
 from PIL import Image
+from pdf2image import convert_from_path
 from paddleocr import PaddleOCR
 
 from app.logger import Timer, log
@@ -20,7 +20,7 @@ _ocr_instance: PaddleOCR | None = None
 def get_ocr() -> PaddleOCR:
     global _ocr_instance
     if _ocr_instance is None:
-        log.info("Loading PaddleOCR model (first request)...")
+        log.info("Loading OCR model (first request — one-time load)...")
         with Timer("ocr.model_load"):
             _ocr_instance = PaddleOCR(
                 text_detection_model_name="PP-OCRv6_tiny_det",
@@ -53,16 +53,16 @@ def pil_to_bgr_array(img: Image.Image) -> np.ndarray:
     return np.array(img.convert("RGB"))[:, :, ::-1]
 
 
-def pdf_to_images(pdf_path: str, dpi: int = PDF_RENDER_DPI) -> list[Image.Image]:
-    with Timer("pdf_to_images"):
-        return convert_from_path(pdf_path, dpi=dpi)
+def pdf_to_images(pdf_path: Path) -> list[Image.Image]:
+    with Timer("ocr.pdf_to_images"):
+        return convert_from_path(str(pdf_path), dpi=PDF_RENDER_DPI)
 
 
-def ocr_image(img: Image.Image, hint: str = "") -> str:
+def extract_text_from_image(img: Image.Image, page_hint: str = "") -> str:
     ocr = get_ocr()
     img = resize_image(img)
     img_array = pil_to_bgr_array(img)
-    tag = f"ocr({hint})" if hint else "ocr"
+    tag = f"ocr.predict({page_hint})" if page_hint else "ocr.predict"
     with Timer(tag):
         result = ocr.predict(img_array)
 
@@ -70,22 +70,17 @@ def ocr_image(img: Image.Image, hint: str = "") -> str:
     for res in result:
         texts = res.json.get("res", {}).get("rec_texts", [])
         lines.extend(texts)
-    log.info("%s → %d lines", tag, len(lines))
+    log.info("%s → %d text lines", tag, len(lines))
     return "\n".join(lines)
 
 
-def extract_text_from_pdf(pdf_path: str) -> str:
+def extract_text_from_pdf(pdf_path: Path) -> str:
     images = pdf_to_images(pdf_path)
     all_text = []
     for i, img in enumerate(images):
-        text = ocr_image(img, hint=f"page_{i}")
+        text = extract_text_from_image(img, page_hint=f"page_{i}")
         all_text.append(text)
     return "\n\n".join(all_text)
-
-
-def extract_text_from_image(img_path: str) -> str:
-    img = Image.open(img_path)
-    return ocr_image(img, hint="image")
 
 
 def extract_text(file_bytes: bytes, filename: str) -> str:
@@ -96,12 +91,12 @@ def extract_text(file_bytes: bytes, filename: str) -> str:
 
     log.info("Processing file=%s size=%d bytes", filename, len(file_bytes))
     try:
-        with Timer(f"extract_text({filename})"):
+        with Timer(f"ocr.total({filename})"):
             if suffix == ".pdf":
-                result = extract_text_from_pdf(tmp_path)
+                result = extract_text_from_pdf(Path(tmp_path))
             else:
                 img = Image.open(tmp_path)
-                result = ocr_image(img, hint="image")
+                result = extract_text_from_image(img)
     finally:
         Path(tmp_path).unlink(missing_ok=True)
 

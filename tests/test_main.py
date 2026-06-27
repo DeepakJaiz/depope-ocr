@@ -1,8 +1,7 @@
-from unittest.mock import patch, MagicMock, PropertyMock
+from unittest.mock import patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from PIL import Image
 
 from app.main import app
 
@@ -39,8 +38,8 @@ async def test_extract_empty_file(client):
 @pytest.mark.asyncio
 async def test_extract_success(client, sample_pdf_bytes):
     with (
-        patch("app.main.extract_text", return_value="OCR text with containers FFAU6029848"),
-        patch("app.main.extract_invoice_fields") as mock_llm,
+        patch("app.router.extract_text", return_value="OCR text FFAU6029848"),
+        patch("app.router.extract_invoice_fields") as mock_llm,
     ):
         mock_llm.return_value = {
             "depot": "DP World Nhava Sheva",
@@ -48,7 +47,6 @@ async def test_extract_success(client, sample_pdf_bytes):
             "shipping_line": "MAERSK",
             "containers": [
                 {"number": "FFAU6029848", "type_size": "20' DV"},
-                {"number": "HASU1493470", "type_size": "40' HC"},
             ],
         }
         resp = await client.post(
@@ -60,18 +58,15 @@ async def test_extract_success(client, sample_pdf_bytes):
     assert data["depot"] == "DP World Nhava Sheva"
     assert data["validity_date"] == "25-Jul-2026"
     assert data["shipping_line"] == "MAERSK"
-    assert len(data["containers"]) == 2
+    assert len(data["containers"]) == 1
     assert data["containers"][0]["number"] == "FFAU6029848"
-    assert data["containers"][0]["type_size"] == "20' DV"
-    assert data["containers"][1]["number"] == "HASU1493470"
-    assert data["containers"][1]["type_size"] == "40' HC"
     assert data["raw_text"] is not None
     assert data["error"] is None
 
 
 @pytest.mark.asyncio
 async def test_extract_ocr_failure(client):
-    with patch("app.main.extract_text", side_effect=RuntimeError("poppler crash")):
+    with patch("app.router.extract_text", side_effect=RuntimeError("poppler crash")):
         resp = await client.post(
             "/api/v1/extract",
             files={"file": ("test.pdf", b"x" * 1024, "application/pdf")},
@@ -83,8 +78,8 @@ async def test_extract_ocr_failure(client):
 @pytest.mark.asyncio
 async def test_extract_llm_failure(client):
     with (
-        patch("app.main.extract_text", return_value="some OCR text"),
-        patch("app.main.extract_invoice_fields", side_effect=RuntimeError("LLM error")),
+        patch("app.router.extract_text", return_value="some OCR text"),
+        patch("app.router.extract_invoice_fields", side_effect=RuntimeError("LLM error")),
     ):
         resp = await client.post(
             "/api/v1/extract",

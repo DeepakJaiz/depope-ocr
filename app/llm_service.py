@@ -1,17 +1,12 @@
-from __future__ import annotations
-
 import json
 import os
 from pathlib import Path
 
-from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
-
-load_dotenv()
 
 from app.logger import Timer, log
 
-PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "extraction_prompt.txt"
+PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "extraction_prompt.txt"
 
 
 def load_prompt() -> str:
@@ -19,22 +14,26 @@ def load_prompt() -> str:
 
 
 def get_llm():
-    api_key = os.getenv("LLM_API_KEY", "")
-    base_url = os.getenv("LLM_BASE_URL", "https://openrouter.ai/api/v1")
+    provider = os.getenv("LLM_PROVIDER", "openai")
     model = os.getenv("LLM_MODEL", "openai/gpt-4o-mini")
+    api_key = os.getenv("LLM_API_KEY", "sk-or-v1-placeholder")
+    base_url = os.getenv("LLM_BASE_URL", "https://openrouter.ai/api/v1")
 
     default_headers = {}
     referrer = os.getenv("LLM_REFERRER")
     if referrer:
         default_headers["HTTP-Referer"] = referrer
 
-    return ChatOpenAI(
-        model=model,
-        api_key=api_key,
-        base_url=base_url,
-        default_headers=default_headers or None,
-        temperature=0.1,
-    )
+    if provider == "openai":
+        return ChatOpenAI(
+            model=model,
+            api_key=api_key,
+            base_url=base_url,
+            default_headers=default_headers or None,
+            temperature=0.1,
+        )
+    else:
+        raise ValueError(f"Unsupported LLM provider: {provider}")
 
 
 def extract_invoice_fields(ocr_text: str) -> dict:
@@ -51,7 +50,8 @@ def extract_invoice_fields(ocr_text: str) -> dict:
         response = llm.invoke([
             ("system", "You extract structured data from OCR invoice text. Return only valid JSON."),
             ("human", user_message),
-        ])
+        ],
+        extra_body={"reasoning": {"effort": None}},)
     content = response.content
 
     try:

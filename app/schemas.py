@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pydantic import BaseModel
 
 
@@ -17,9 +19,5 @@ class ExtractionResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str
+    onnxruntime_version: str | None = None
     ocr_loaded: bool
-
-
-class ErrorResponse(BaseModel):
-    error: str
-    detail: str | None = None

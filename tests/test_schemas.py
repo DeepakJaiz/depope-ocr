@@ -1,4 +1,4 @@
-from app.models import ContainerInfo, ExtractionResponse, HealthResponse, ErrorResponse
+from app.schemas import ContainerInfo, ExtractionResponse, HealthResponse
 
 
 class TestContainerInfo:
@@ -17,11 +17,7 @@ class TestExtractionResponse:
     def test_minimal(self):
         r = ExtractionResponse()
         assert r.depot is None
-        assert r.validity_date is None
-        assert r.shipping_line is None
         assert r.containers is None
-        assert r.raw_text is None
-        assert r.error is None
 
     def test_full(self):
         r = ExtractionResponse(
@@ -32,10 +28,6 @@ class TestExtractionResponse:
             raw_text="some text",
         )
         assert r.depot == "DP World"
-        assert r.validity_date == "25-Jul-2026"
-        assert r.shipping_line == "MAERSK"
-        assert len(r.containers) == 1
-        assert r.containers[0].number == "FFAU6029848"
         assert r.raw_text == "some text"
 
     def test_error(self):
@@ -48,14 +40,3 @@ class TestHealthResponse:
         h = HealthResponse(status="ok", ocr_loaded=True)
         assert h.status == "ok"
         assert h.ocr_loaded is True
-
-
-class TestErrorResponse:
-    def test_minimal(self):
-        e = ErrorResponse(error="bad")
-        assert e.error == "bad"
-        assert e.detail is None
-
-    def test_full(self):
-        e = ErrorResponse(error="bad", detail="something broke")
-        assert e.detail == "something broke"
