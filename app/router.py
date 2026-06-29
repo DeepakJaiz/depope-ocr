@@ -68,12 +68,17 @@ async def extract(file: UploadFile = File(...)):
     else:
         container_list = None
 
+    consignee = fields.get("consignee")
+    depot = fields.get("depot") if not consignee else None
+
     log.info(
-        "[req=%s] Done depot=%s containers=%s",
-        req_id, fields.get("depot"), [c.number for c in container_list] if container_list else None,
+        "[req=%s] Done consignee=%s depot=%s containers=%s",
+        req_id, consignee, depot, [c.number for c in container_list] if container_list else None,
     )
     return ExtractionResponse(
-        depot=fields.get("depot"),
+        do_number=fields.get("do_number"),
+        consignee=consignee,
+        depot=depot,
         validity_date=fields.get("validity_date"),
         shipping_line=fields.get("shipping_line"),
         containers=container_list,

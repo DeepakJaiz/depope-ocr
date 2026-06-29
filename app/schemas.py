@@ -9,6 +9,8 @@ class ContainerInfo(BaseModel):
 
 
 class ExtractionResponse(BaseModel):
+    do_number: str | None = None
+    consignee: str | None = None
     depot: str | None = None
     validity_date: str | None = None
     shipping_line: str | None = None
