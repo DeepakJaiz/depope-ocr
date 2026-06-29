@@ -61,7 +61,7 @@ def extract_invoice_fields(ocr_text: str) -> dict:
         result = json.loads(extracted)
         containers = result.get("containers") or []
         nums = [c["number"] for c in containers] if isinstance(containers, list) else containers
-        log.info("LLM extracted: depot=%s containers=%s", result.get("depot"), nums)
+        log.info("LLM extracted: do_number=%s consignee=%s depot=%s containers=%s", result.get("do_number"), result.get("consignee"), result.get("depot"), nums)
         return result
     except json.JSONDecodeError:
         log.error("LLM returned invalid JSON: %s", content[:200])

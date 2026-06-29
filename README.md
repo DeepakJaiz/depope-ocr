@@ -14,8 +14,8 @@ FastAPI service that extracts text and structured invoice data from PDF files us
 ### Using Docker (recommended)
 
 ```bash
-docker build -t depope-ocr .
-docker run -p 8000:8000 depope-ocr
+docker build --no-cache -t depope-ocr .
+docker run -p 8000:8000 --env-file .env depope-ocr
 ```
 
 Server starts at `http://localhost:8000`.

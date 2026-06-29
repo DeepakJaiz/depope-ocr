@@ -42,6 +42,8 @@ async def test_extract_success(client, sample_pdf_bytes):
         patch("app.router.extract_invoice_fields") as mock_llm,
     ):
         mock_llm.return_value = {
+            "do_number": "DO-2024-5678",
+            "consignee": None,
             "depot": "DP World Nhava Sheva",
             "validity_date": "25-Jul-2026",
             "shipping_line": "MAERSK",
@@ -55,12 +57,45 @@ async def test_extract_success(client, sample_pdf_bytes):
         )
     assert resp.status_code == 200
     data = resp.json()
+    assert data["do_number"] == "DO-2024-5678"
+    assert data["consignee"] is None
     assert data["depot"] == "DP World Nhava Sheva"
     assert data["validity_date"] == "25-Jul-2026"
     assert data["shipping_line"] == "MAERSK"
     assert len(data["containers"]) == 1
     assert data["containers"][0]["number"] == "FFAU6029848"
     assert data["raw_text"] is not None
+    assert data["error"] is None
+
+
+@pytest.mark.asyncio
+async def test_extract_consignee_priority(client, sample_pdf_bytes):
+    with (
+        patch("app.router.extract_text", return_value="OCR text consignee present"),
+        patch("app.router.extract_invoice_fields") as mock_llm,
+    ):
+        mock_llm.return_value = {
+            "do_number": "DO-9999",
+            "consignee": "NEW DANDELI VENTURES",
+            "depot": "Foxal Yard",
+            "validity_date": "2026-05-28",
+            "shipping_line": "MAERSK",
+            "containers": [
+                {"number": "HASU1493470", "type_size": "20' DRY"},
+            ],
+        }
+        resp = await client.post(
+            "/api/v1/extract",
+            files={"file": ("invoice.pdf", sample_pdf_bytes, "application/pdf")},
+        )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["do_number"] == "DO-9999"
+    assert data["consignee"] == "NEW DANDELI VENTURES"
+    assert data["depot"] is None
+    assert data["validity_date"] == "2026-05-28"
+    assert data["shipping_line"] == "MAERSK"
+    assert len(data["containers"]) == 1
     assert data["error"] is None
 
 

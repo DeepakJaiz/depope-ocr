@@ -16,17 +16,23 @@ class TestContainerInfo:
 class TestExtractionResponse:
     def test_minimal(self):
         r = ExtractionResponse()
+        assert r.do_number is None
+        assert r.consignee is None
         assert r.depot is None
         assert r.containers is None
 
     def test_full(self):
         r = ExtractionResponse(
+            do_number="DO-12345",
+            consignee="NEW DANDELI VENTURES",
             depot="DP World",
             validity_date="25-Jul-2026",
             shipping_line="MAERSK",
             containers=[ContainerInfo(number="FFAU6029848")],
             raw_text="some text",
         )
+        assert r.do_number == "DO-12345"
+        assert r.consignee == "NEW DANDELI VENTURES"
         assert r.depot == "DP World"
         assert r.raw_text == "some text"
 
